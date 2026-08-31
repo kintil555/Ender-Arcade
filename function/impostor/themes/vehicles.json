@@ -1,0 +1,13 @@
+{
+  "theme": "Vehicles",
+  "pairs": [
+    { "innocent": "Car", "impostor": "Truck" },
+    { "innocent": "Bicycle", "impostor": "Motorcycle" },
+    { "innocent": "Airplane", "impostor": "Helicopter" },
+    { "innocent": "Boat", "impostor": "Ship" },
+    { "innocent": "Bus", "impostor": "Train" },
+    { "innocent": "Scooter", "impostor": "Skateboard" },
+    { "innocent": "Van", "impostor": "SUV" },
+    { "innocent": "Submarine", "impostor": "Yacht" }
+  ]
+}

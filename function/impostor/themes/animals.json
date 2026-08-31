@@ -1,0 +1,13 @@
+{
+  "theme": "Animals",
+  "pairs": [
+    { "innocent": "Lion", "impostor": "Tiger" },
+    { "innocent": "Chicken", "impostor": "Turkey" },
+    { "innocent": "Dolphin", "impostor": "Shark" },
+    { "innocent": "Horse", "impostor": "Zebra" },
+    { "innocent": "Cat", "impostor": "Fox" },
+    { "innocent": "Frog", "impostor": "Toad" },
+    { "innocent": "Eagle", "impostor": "Hawk" },
+    { "innocent": "Rabbit", "impostor": "Hare" }
+  ]
+}

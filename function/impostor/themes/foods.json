@@ -1,0 +1,13 @@
+{
+  "theme": "Foods",
+  "pairs": [
+    { "innocent": "Pizza", "impostor": "Calzone" },
+    { "innocent": "Burger", "impostor": "Sandwich" },
+    { "innocent": "Noodles", "impostor": "Spaghetti" },
+    { "innocent": "Donut", "impostor": "Bagel" },
+    { "innocent": "Taco", "impostor": "Burrito" },
+    { "innocent": "Pancake", "impostor": "Waffle" },
+    { "innocent": "Sushi", "impostor": "Sashimi" },
+    { "innocent": "Cupcake", "impostor": "Muffin" }
+  ]
+}

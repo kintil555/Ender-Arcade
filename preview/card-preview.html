@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Impostor Game Result Card — Preview</title>
+<style>
+/* =========================================================================
+   DESIGN TOKENS
+   Ini adalah "kontrol" utama tampilan card. Ubah nilai di sini (atau lewat
+   panel kanan di preview) untuk kustomisasi. Struktur ini akan di-porting
+   1:1 ke koordinat node-canvas di bot, jadi apa yang berubah di sini,
+   nanti diminta untuk diterapkan sama juga di canvas generator.
+   ========================================================================= */
+:root{
+  /* Canvas size (Discord embed image sweet spot) */
+  --card-w: 940px;
+  --card-h: 775px;
+
+  /* Corner radius */
+  --radius-card: 14px;
+  --radius-panel: 17px;
+  --radius-avatar: 999px;
+  --radius-row-badge: 10px;
+
+  /* Base surfaces */
+  --bg-blur-strength: 33px;
+  --bg-overlay-opacity: 0.55;
+  --panel-bg: rgba(20, 18, 24, 0.43);
+  --panel-border: rgba(255,255,255,0.08);
+
+  /* Typography */
+  --font-display: 'Ender Sentinel Display', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Ender Sentinel Body', 'Segoe UI', system-ui, sans-serif;
+  --font-title-size: 39px;
+  --font-subtitle-size: 18px;
+  --font-panel-header-size: 15px;
+  --font-row-size: 17px;
+  --font-row-sub-size: 15px;
+
+  /* Outcome colors — switched via body[data-outcome] below */
+  --outcome-accent: #2ecc71;
+  --outcome-accent-soft: rgba(46, 204, 113, 0.28);
+  --outcome-glow: rgba(46, 204, 113, 0.35);
+  --bg-tint-1: #16321f;
+  --bg-tint-2: #0b1c12;
+
+  /* Row badge colors (rank / vote count / role) */
+  --badge-gold: #f1c40f;
+  --badge-silver: #cfd6de;
+  --badge-bronze: #d98a4b;
+  --badge-default: #3a3f4b;
+
+  --credit-positive: #57f287;
+  --credit-negative: #ed4245;
+
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255,255,255,0.68);
+  --text-muted: rgba(255,255,255,0.45);
+
+  --avatar-size: 96px;
+  --avatar-border-width: 3px;
+  --avatar-border-color: var(--outcome-accent);
+
+  --panel-gap: 16px;
+  --panel-padding: 18px 20px;
+  --row-gap: 10px;
+}
+
+/* Outcome presets */
+body[data-outcome="INNOCENT"]{
+  --outcome-accent: #2ecc71;
+  --outcome-accent-soft: rgba(46, 204, 113, 0.28);
+  --outcome-glow: rgba(46, 204, 113, 0.35);
+  --bg-tint-1: #163821;
+  --bg-tint-2: #0a1610;
+}
+body[data-outcome="IMPOSTOR"]{
+  --outcome-accent: #ed4245;
+  --outcome-accent-soft: rgba(237, 66, 69, 0.28);
+  --outcome-glow: rgba(237, 66, 69, 0.35);
+  --bg-tint-1: #3a1418;
+  --bg-tint-2: #170808;
+}
+body[data-outcome="JOKER"]{
+  --outcome-accent: #f1c40f;
+  --outcome-accent-soft: rgba(241, 196, 15, 0.28);
+  --outcome-glow: rgba(241, 196, 15, 0.35);
+  --bg-tint-1: #3a2f0a;
+  --bg-tint-2: #171205;
+}
+
+*{box-sizing:border-box; margin:0; padding:0;}
+body{
+  font-family: var(--font-body);
+  background:#0d0d10;
+  color:var(--text-primary);
+  display:flex;
+  gap:28px;
+  padding:32px;
+  align-items:flex-start;
+  min-height:100vh;
+}
+
+/* =========================================================================
+   CARD
+   ========================================================================= */
+#card-wrap{ flex-shrink:0; }
+
+.card{
+  width:var(--card-w);
+  height:var(--card-h);
+  border-radius:var(--radius-card);
+  position:relative;
+  overflow:hidden;
+  background: linear-gradient(180deg, var(--bg-tint-1), var(--bg-tint-2) 100%);
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06);
+}
+
+/* decorative blurred background pattern layer (stand-in for a themed banner) */
+.card::before{
+  content:"";
+  position:absolute; inset:0;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255,255,255,0.025) 0 2px, transparent 2px 40px);
+  opacity:0.6;
+  pointer-events:none;
+}
+/* corner glow removed — pure vertical gradient only, see .card background */
+
+.card-inner{
+  position:relative;
+  z-index:1;
+  height:100%;
+  display:flex;
+  flex-direction:column;
+  padding:26px 28px 22px;
+  gap:18px;
+}
+
+/* Compact outcome heading — replaces the old big avatar+title header.
+   Just a medium-sized winner line + one short reason line, so the panels
+   below get almost all the vertical space. */
+.header-compact{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.title-compact{
+  font-family:var(--font-display);
+  font-size:var(--font-title-size);
+  font-weight:800;
+  line-height:1.1;
+  color:var(--outcome-accent);
+  text-shadow:0 2px 10px var(--outcome-glow);
+}
+.subtitle-compact{
+  font-size:var(--font-subtitle-size);
+  color:var(--text-secondary);
+  font-weight:500;
+}
+
+/* Panels grid */
+.panels{
+  flex:1;
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap:var(--panel-gap);
+  min-height:0;
+}
+.panel{
+  background:var(--panel-bg);
+  border:1px solid var(--panel-border);
+  border-radius:var(--radius-panel);
+  padding:var(--panel-padding);
+  backdrop-filter: blur(var(--bg-blur-strength));
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  min-height:0;
+  overflow:hidden;
+}
+.panel.span-full{ grid-column: 1 / -1; }
+
+.panel-header{
+  font-size:var(--font-panel-header-size);
+  font-weight:700;
+  letter-spacing:0.03em;
+  text-transform:uppercase;
+  color:var(--text-secondary);
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.panel-header .accent-dot{
+  width:6px; height:6px; border-radius:50%;
+  background:var(--outcome-accent);
+  box-shadow:0 0 8px var(--outcome-glow);
+}
+
+.row-list{
+  display:flex;
+  flex-direction:column;
+  gap:var(--row-gap);
+  overflow:hidden;
+}
+.row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-size:var(--font-row-size);
+}
+.row-badge{
+  width:22px; height:22px;
+  border-radius:var(--radius-row-badge);
+  background:var(--badge-default);
+  color:#fff;
+  font-size:12px;
+  font-weight:800;
+  display:flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+}
+.row-badge.rank-1{ background:var(--badge-gold); color:#2b2100;}
+.row-badge.rank-2{ background:var(--badge-silver); color:#22262c;}
+.row-badge.rank-3{ background:var(--badge-bronze); color:#2b1a08;}
+
+.row-avatar{
+  width:26px; height:26px;
+  border-radius:50%;
+  background:#555 center/cover no-repeat;
+  flex-shrink:0;
+  border:2px solid rgba(255,255,255,0.15);
+}
+
+.row-name{
+  color:var(--text-primary);
+  font-weight:600;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  flex:1;
+  min-width:0;
+}
+.row-meta{
+  color:var(--text-secondary);
+  font-size:var(--font-row-sub-size);
+  font-weight:600;
+  flex-shrink:0;
+}
+.row-value{
+  font-weight:800;
+  font-size:var(--font-row-size);
+  flex-shrink:0;
+}
+.row-value.positive{ color:var(--credit-positive); }
+.row-value.negative{ color:var(--credit-negative); }
+
+.role-chip{
+  font-size:11px;
+  font-weight:700;
+  padding:3px 8px;
+  border-radius:999px;
+  flex-shrink:0;
+  text-transform:uppercase;
+  letter-spacing:0.02em;
+}
+.role-chip.IMPOSTOR{ background:rgba(237,66,69,0.22); color:#ff8688;}
+.role-chip.INNOCENT{ background:rgba(87,242,135,0.18); color:#8ff5b0;}
+.role-chip.JOKER{ background:rgba(241,196,15,0.2); color:#ffe37a;}
+.role-chip.SHERIFF{ background:rgba(52,152,219,0.2); color:#8fcaf5;}
+
+.footer-note{
+  font-size:11px;
+  color:var(--text-muted);
+  text-align:right;
+}
+
+/* =========================================================================
+   CONTROL PANEL (preview tool only — not part of the rendered card)
+   ========================================================================= */
+#controls{
+  width:340px;
+  background:#17171c;
+  border:1px solid #26262e;
+  border-radius:16px;
+  padding:0;
+  max-height:calc(100vh - 64px);
+  flex-shrink:0;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+#controls-scroll{
+  overflow-y:auto;
+  padding:20px 20px 4px;
+  flex:1;
+  min-height:0;
+}
+#controls h2{ font-size:16px; margin-bottom:14px; padding:20px 20px 0; }
+#controls .group{ margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid #232329;}
+#controls .group:last-child{ border-bottom:none; margin-bottom:4px; }
+#controls label{
+  display:flex; justify-content:space-between; align-items:center;
+  font-size:12px; color:#aaa; margin-bottom:8px; gap:8px;
+}
+#controls input[type="range"]{ flex:1; }
+#controls input[type="color"]{ width:36px; height:24px; border:none; border-radius:6px; background:none; padding:0;}
+#controls select, #controls input[type="text"]{
+  background:#0f0f13; border:1px solid #2a2a32; color:#fff; border-radius:6px;
+  padding:6px 8px; font-size:12px; width:100%;
+}
+#controls .val{ font-family:monospace; color:#ddd; min-width:44px; text-align:right;}
+#controls button{
+  background:#2ecc71; color:#0d0d10; border:none; border-radius:8px;
+  padding:9px 12px; font-weight:700; font-size:12px; cursor:pointer; width:100%; margin-top:6px;
+}
+#controls button.secondary{ background:#2a2a32; color:#fff; }
+#controls .hint{ font-size:11px; color:#666; margin-top:4px; line-height:1.4; }
+#export-out{
+  width:100%; height:100px; margin-top:8px; font-family:monospace; font-size:10px;
+  background:#0f0f13; border:1px solid #2a2a32; color:#8f8; border-radius:6px; padding:8px;
+  resize:vertical;
+}
+#export-footer{
+  flex-shrink:0;
+  padding:14px 20px 20px;
+  border-top:1px solid #232329;
+  background:#17171c;
+}
+#btn-export.copied{ background:#1c9c5c; }
+</style>
+</head>
+<body data-outcome="IMPOSTOR">
+
+<div id="card-wrap">
+  <div class="card" id="card">
+    <div class="card-inner">
+      <div class="header-compact">
+        <div class="title-compact" id="title-text">IMPOSTORS WIN!</div>
+        <div class="subtitle-compact" id="subtitle-text">Pemain yang divote bukan impostor — impostor menang!</div>
+      </div>
+
+      <div class="panels">
+        <!-- Voting results -->
+        <div class="panel">
+          <div class="panel-header"><span class="accent-dot"></span>Voting Results</div>
+          <div class="row-list" id="vote-rows">
+            <div class="row">
+              <div class="row-badge rank-1">1</div>
+              <div class="row-avatar" style="background-image:url('https://api.dicebear.com/7.x/identicon/svg?seed=Dummy2')"></div>
+              <div class="row-name">Dummy 2</div>
+              <div class="row-meta">8 votes</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Roles revealed -->
+        <div class="panel">
+          <div class="panel-header"><span class="accent-dot"></span>Roles Revealed</div>
+          <div class="row-list" id="role-rows">
+            <div class="row">
+              <div class="row-avatar" style="background-image:url('https://api.dicebear.com/7.x/identicon/svg?seed=Dummy5')"></div>
+              <div class="row-name">Dummy 5</div>
+              <div class="role-chip IMPOSTOR">Impostor</div>
+            </div>
+            <div class="row">
+              <div class="row-avatar" style="background-image:url('https://api.dicebear.com/7.x/identicon/svg?seed=Brody')"></div>
+              <div class="row-name">Brody.cs</div>
+              <div class="role-chip IMPOSTOR">Impostor</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Rewards (full width) -->
+        <div class="panel span-full">
+          <div class="panel-header"><span class="accent-dot"></span>Hadiah Kredit Game</div>
+          <div class="row-list" id="reward-rows" style="display:grid; grid-template-columns: 1fr 1fr; gap:6px 24px;">
+            <div class="row">
+              <div class="row-avatar" style="background-image:url('https://api.dicebear.com/7.x/identicon/svg?seed=Voxel')"></div>
+              <div class="row-name">Voxel</div>
+              <div class="role-chip INNOCENT">Innocent</div>
+              <div class="row-value positive">+20</div>
+            </div>
+            <div class="row">
+              <div class="row-avatar" style="background-image:url('https://api.dicebear.com/7.x/identicon/svg?seed=Brody')"></div>
+              <div class="row-name">Brody.cs</div>
+              <div class="role-chip IMPOSTOR">Impostor</div>
+              <div class="row-value positive">+50</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-note">Gunakan /credit_to_xp untuk tukar kredit → XP</div>
+    </div>
+  </div>
+</div>
+
+<div id="controls">
+  <h2>🎛️ Card Customizer</h2>
+  <div id="controls-scroll">
+
+  <div class="group">
+    <label>Outcome preview
+      <select id="ctl-outcome">
+        <option value="INNOCENT">Innocent Win</option>
+        <option value="IMPOSTOR" selected>Impostor Win</option>
+        <option value="JOKER">Joker Win</option>
+      </select>
+    </label>
+    <div class="hint">Ganti untuk lihat 3 skema warna outcome.</div>
+  </div>
+
+  <div class="group">
+    <label>Card width <span class="val" id="v-cw">900px</span></label>
+    <input type="range" id="ctl-cw" min="600" max="1200" value="940">
+    <label>Card height <span class="val" id="v-ch">620px</span></label>
+    <input type="range" id="ctl-ch" min="400" max="950" value="775">
+  </div>
+
+  <div class="group">
+    <label>Card corner radius <span class="val" id="v-rc">22px</span></label>
+    <input type="range" id="ctl-rc" min="0" max="48" value="14">
+    <label>Panel corner radius <span class="val" id="v-rp">16px</span></label>
+    <input type="range" id="ctl-rp" min="0" max="32" value="17">
+  </div>
+
+  <div class="group">
+    <label>Avatar border width <span class="val" id="v-avb">4px</span></label>
+    <input type="range" id="ctl-avb" min="0" max="10" value="3">
+  </div>
+
+  <div class="group">
+    <label>Title font size <span class="val" id="v-fts">26px</span></label>
+    <input type="range" id="ctl-fts" min="16" max="48" value="39">
+    <label>Row font size <span class="val" id="v-frs">16px</span></label>
+    <input type="range" id="ctl-frs" min="10" max="24" value="17">
+  </div>
+
+  <div class="group">
+    <label>Panel background opacity <span class="val" id="v-pbo">0.55</span></label>
+    <input type="range" id="ctl-pbo" min="0" max="100" value="43">
+    <label>Panel blur strength <span class="val" id="v-pbl">26px</span></label>
+    <input type="range" id="ctl-pbl" min="0" max="60" value="33">
+    <label>Panel gap <span class="val" id="v-pg">16px</span></label>
+    <input type="range" id="ctl-pg" min="0" max="40" value="16">
+  </div>
+
+  <div class="group">
+    <label>Accent color override
+      <input type="color" id="ctl-accent" value="#ed4245">
+    </label>
+    <div class="hint">Override manual warna outcome saat ini (tidak permanen — reload untuk balik ke preset).</div>
+  </div>
+
+  </div>
+
+  <div id="export-footer">
+    <button id="btn-export">📋 Export &amp; Copy nilai</button>
+    <button class="secondary" id="btn-reset">Reset ke default</button>
+    <textarea id="export-out" readonly placeholder="Klik 'Export & Copy nilai' — hasilnya otomatis ke-copy ke clipboard, langsung paste ke chat..."></textarea>
+    <div class="hint" id="export-status">
+      Semua slider mengubah CSS variable di <code>:root</code>. Setelah puas dengan tampilannya,
+      klik tombol di atas — JSON-nya otomatis ter-copy ke clipboard (kalau browser memblokir, tinggal select teks di kotak lalu Ctrl+C) dan kirim ke saya.
+    </div>
+  </div>
+</div>
+
+<script>
+const root = document.documentElement.style;
+const body = document.body;
+
+function bind(id, cssVar, unit, displayId, transform){
+  const el = document.getElementById(id);
+  const disp = document.getElementById(displayId);
+  el.addEventListener('input', () => {
+    const raw = el.value;
+    const val = transform ? transform(raw) : raw + (unit || '');
+    root.setProperty(cssVar, val);
+    if(disp) disp.textContent = (transform ? transform(raw) : raw) + (unit && !transform ? unit : (unit==='' ? '' : unit || ''));
+  });
+}
+
+document.getElementById('ctl-outcome').addEventListener('change', e=>{
+  body.dataset.outcome = e.target.value;
+  const label = {INNOCENT:'INNOCENTS WIN!', IMPOSTOR:'IMPOSTORS WIN!', JOKER:'JOKER WINS!'}[e.target.value];
+  document.getElementById('title-text').textContent = label;
+  document.getElementById('outcome-badge').textContent = label.replace(/[^\w\s!]/g,'').trim();
+});
+
+bind('ctl-cw', '--card-w', 'px', 'v-cw');
+bind('ctl-ch', '--card-h', 'px', 'v-ch');
+bind('ctl-rc', '--radius-card', 'px', 'v-rc');
+bind('ctl-rp', '--radius-panel', 'px', 'v-rp');
+bind('ctl-avb', '--avatar-border-width', 'px', 'v-avb');
+bind('ctl-fts', '--font-title-size', 'px', 'v-fts');
+bind('ctl-frs', '--font-row-size', 'px', 'v-frs');
+bind('ctl-pg', '--panel-gap', 'px', 'v-pg');
+
+document.getElementById('ctl-pbo').addEventListener('input', e=>{
+  const v = (e.target.value/100).toFixed(2);
+  root.setProperty('--panel-bg', `rgba(20, 18, 24, ${v})`);
+  document.getElementById('v-pbo').textContent = v;
+});
+document.getElementById('ctl-pbl').addEventListener('input', e=>{
+  root.setProperty('--bg-blur-strength', e.target.value + 'px');
+  document.getElementById('v-pbl').textContent = e.target.value + 'px';
+});
+document.getElementById('ctl-accent').addEventListener('input', e=>{
+  root.setProperty('--outcome-accent', e.target.value);
+  root.setProperty('--avatar-border-color', e.target.value);
+});
+
+document.getElementById('btn-reset').addEventListener('click', ()=> location.reload());
+
+document.getElementById('btn-export').addEventListener('click', async ()=>{
+  const cs = getComputedStyle(document.documentElement);
+  const keys = [
+    '--card-w','--card-h','--radius-card','--radius-panel','--radius-avatar','--radius-row-badge',
+    '--bg-blur-strength','--panel-bg','--panel-border',
+    '--font-title-size','--font-subtitle-size','--font-panel-header-size','--font-row-size','--font-row-sub-size',
+    '--outcome-accent','--outcome-accent-soft','--outcome-glow',
+    '--badge-gold','--badge-silver','--badge-bronze','--badge-default',
+    '--credit-positive','--credit-negative',
+    '--avatar-border-width',
+    '--panel-gap','--panel-padding','--row-gap'
+  ];
+  const out = {};
+  keys.forEach(k => out[k.replace(/^--/,'')] = cs.getPropertyValue(k).trim());
+  out['outcome_preset'] = document.body.dataset.outcome;
+  const json = JSON.stringify(out, null, 2);
+  document.getElementById('export-out').value = json;
+
+  const btn = document.getElementById('btn-export');
+  const status = document.getElementById('export-status');
+  try {
+    await navigator.clipboard.writeText(json);
+    btn.textContent = '✅ Ter-copy ke clipboard!';
+    btn.classList.add('copied');
+    status.textContent = 'Sudah ke-copy — langsung paste (Ctrl+V) ke chat.';
+  } catch (err) {
+    // Clipboard API blocked (file:// origin in some browsers) — fall back
+    // to manual select so the user can still copy it.
+    const ta = document.getElementById('export-out');
+    ta.focus();
+    ta.select();
+    btn.textContent = '⚠️ Auto-copy diblokir — teks di bawah sudah ke-select, tekan Ctrl+C';
+    status.textContent = 'Browser memblokir auto-copy dari file lokal. Kotak teks di bawah sudah ter-select otomatis, tinggal tekan Ctrl+C lalu paste ke chat.';
+  }
+  setTimeout(()=>{
+    btn.textContent = '📋 Export & Copy nilai';
+    btn.classList.remove('copied');
+  }, 3500);
+});
+</script>
+
+</body>
+</html>
