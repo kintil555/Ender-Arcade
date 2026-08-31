@@ -257,64 +257,26 @@ function buildSheriffResultEmbed({ targetId, wasImpostor }) {
 
 /**
  * Guide embed posted by /setupgame in the designated game channel.
- * IMPORTANT: every line here must match how the bot's actual code works —
- * this is not free-form marketing copy. Verified against GameFlow.js,
- * lobbyHandler.js, embeds.js (Sheriff/vote button+select-menu builders),
- * economy.js and the wallet/credit_to_xp/leaderboard/status commands
- * before writing this, since an earlier draft copied stale text from an
- * old screenshot that no longer matched the code (e.g. it claimed !vote
- * @user and !shoot @user were text commands, and invented !claim/!balance/
- * !exchange and a win-streak bonus that don't exist anywhere in the bot).
+ * Kept short on purpose — the detailed panduan (per-topic) hidup di
+ * buildGuideTopicEmbed(), dipilih lewat dropdown (imp_guide_select)
+ * dan dikirim ephemeral. Jangan taruh isi panduan lengkap di sini lagi.
+ * IMPORTANT: setiap topik di GUIDE_TOPICS harus tetap match dengan kode
+ * asli (GameFlow.js, lobbyHandler.js, economy.js, command wallet/
+ * credit_to_xp/leaderboard/status) — jangan invent command/fitur yang
+ * gak ada di bot.
  */
 function buildGameChannelGuideEmbed(minPlayers, maxPlayers) {
   return new EmbedBuilder()
     .setTitle("🎭 Who is the Impostor?")
     .setColor(COLOR_LOBBY)
-    .setDescription("Selamat datang di channel game **Who is the Impostor**!")
-    .addFields(
-      {
-        name: "📖 Cara Bermain:",
-        value:
-          "1. Tekan tombol **🎮 Open Game** di bawah untuk membuka lobby baru\n" +
-          "2. Pemain lain tekan **Join** untuk ikut bermain (tombol **Leave** untuk keluar lagi sebelum game dimulai)\n" +
-          "3. Host tekan tombol **Open Game** di lobby → bot buat **private room** khusus pemain\n" +
-          "4. Di private room, host ketik `!startgame` (atau `/startgame`) → setiap pemain dapat **tema rahasia** via DM\n" +
-          "5. Bergiliran tulis clue tentang temamu (tanpa sebut nama tema langsung)\n" +
-          "6. Host ketik `!vote` (atau `/vote`) untuk membuka voting → setiap pemain pilih tersangka lewat **menu dropdown** yang muncul\n" +
-          "7. Kalau ada **Sheriff**, dia akan diberi **tombol Vote/Nembak**; kalau pilih Nembak, ada **menu dropdown** untuk pilih target setelah hasil vote\n" +
-          "8. Hasil diumumkan, kredit dibagikan & room otomatis tutup",
-      },
-      {
-        name: "⏱️ Lobby Tidak Aktif:",
-        value:
-          "Lobby yang dibuka lewat **Open Game** otomatis **ditutup** kalau tidak ada aktivitas (Join/Leave/mulai game) selama **60 detik**\n" +
-          "Embed lobby menampilkan hitung mundur real-time sebelum lobby ditutup\n" +
-          "Semua pemain yang sempat join akan dapat **DM pemberitahuan** kalau lobby ditutup otomatis",
-      },
-      {
-        name: "🎭 Role Spesial:",
-        value:
-          "🎭 **Impostor** — Bisa lebih dari 1 (tergantung jumlah pemain), saling sengkongkol lewat DM `!c <pesan>` ke bot (bukan chat di channel — pesan ini di-relay bot ke sesama impostor yang masih hidup lewat DM)\n" +
-          "🕵️ **Sheriff** — Bisa pilih **Nembak** (tombol) lalu pilih target dari dropdown. Benar = innocent menang, salah = Sheriff gugur\n" +
-          "🃏 **Joker** — Menang sendirian kalau berhasil dituduh lewat vote!",
-      },
-      {
-        name: "🏆 Cara Menang:",
-        value:
-          "**Innocent & Sheriff** menang jika impostor berhasil dituduh\n" +
-          "**Joker** menang sendiri jika dia yang dituduh\n" +
-          "**Impostor** menang jika salah dituduh, atau hasil vote seri",
-      },
-      {
-        name: "💰 Sistem Kredit:",
-        value:
-          "Menang game → dapat kredit, kalah tetap dapat kredit lebih kecil (lihat `/wallet` untuk jumlah pasti)\n" +
-          "`/wallet` — Cek saldo kredit & statistik kamu\n" +
-          "`/credit_to_xp <jumlah>` — Tukar kredit jadi XP\n" +
-          "`/leaderboard` — Lihat 10 besar kredit terbanyak",
-      },
-      { name: "⚠️ Penting:", value: `Game hanya bisa dibuka lewat tombol di channel ini (min ${minPlayers}, maks ${maxPlayers} pemain). Command \`/opengame\` di channel lain akan ditolak dan pesan dihapus.` }
-    );
+    .setDescription(
+      "Selamat datang di channel game **Who is the Impostor**!\n\n" +
+      "Tekan **🎮 Open Game** untuk buka lobby, atau pilih topik di dropdown di bawah untuk baca panduan lengkap (cara main, role, command, dll)."
+    )
+    .addFields({
+      name: "⚠️ Penting",
+      value: `Game hanya bisa dibuka lewat tombol di channel ini (min ${minPlayers}, maks ${maxPlayers} pemain). Command \`/opengame\` di channel lain akan ditolak dan pesan dihapus.`,
+    });
 }
 
 /** Persistent button posted below the guide embed — pressing it opens a lobby, same as /opengame. */
@@ -322,6 +284,110 @@ function buildGameChannelTriggerButton() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("imp_channel_opengame").setLabel("🎮 Open Game").setStyle(ButtonStyle.Success)
   );
+}
+
+/**
+ * Topik-topik panduan detail. Setiap entry = 1 opsi di dropdown +
+ * embed yang dikirim ephemeral saat topik itu dipilih.
+ * Verified against GameFlow.js, lobbyHandler.js, economy.js, dan
+ * command wallet/credit_to_xp/leaderboard/status — jangan invent
+ * command yang gak ada (mis. !vote @user, !claim, !exchange, dst
+ * TIDAK ada di bot ini).
+ */
+const GUIDE_TOPICS = {
+  cara_main: {
+    label: "📖 Cara Bermain",
+    description: "Alur main dari buka lobby sampai game selesai",
+    embed: () =>
+      new EmbedBuilder()
+        .setTitle("📖 Cara Bermain")
+        .setColor(COLOR_LOBBY)
+        .setDescription(
+          "1. Tekan tombol **🎮 Open Game** untuk membuka lobby baru\n" +
+          "2. Pemain lain tekan **Join** untuk ikut (tombol **Leave** untuk keluar sebelum game dimulai)\n" +
+          "3. Host tekan **Open Game** di lobby → bot buat **private room** khusus pemain\n" +
+          "4. Di private room, host ketik `!startgame` (atau `/startgame`) → tiap pemain dapat **tema rahasia** via DM\n" +
+          "5. Bergiliran tulis clue tentang temamu (tanpa sebut nama tema langsung)\n" +
+          "6. Host ketik `!vote` (atau `/vote`) untuk buka voting → tiap pemain pilih tersangka lewat **dropdown**\n" +
+          "7. Kalau ada **Sheriff**, dia dapat tombol Nembak → pilih target dari dropdown setelah hasil vote\n" +
+          "8. Hasil diumumkan, kredit dibagikan & room otomatis tutup\n\n" +
+          "**Lobby idle:** otomatis ditutup kalau tidak ada aktivitas selama **60 detik** (ada countdown di embed lobby, dan pemain yang join dapat DM pemberitahuan)."
+        ),
+  },
+  roles: {
+    label: "🎭 Role Spesial",
+    description: "Impostor, Sheriff, Joker & cara menang",
+    embed: () =>
+      new EmbedBuilder()
+        .setTitle("🎭 Role Spesial & Cara Menang")
+        .setColor(COLOR_LOBBY)
+        .addFields(
+          {
+            name: "Role",
+            value:
+              "🎭 **Impostor** — Bisa lebih dari 1 (tergantung jumlah pemain). Sengkongkol lewat DM `!c <pesan>` ke bot, direlay ke sesama impostor yang masih hidup\n" +
+              "🕵️ **Sheriff** — Bisa pilih **Nembak** (tombol) lalu pilih target dari dropdown. Benar = innocent menang, salah = Sheriff gugur\n" +
+              "🃏 **Joker** — Menang sendirian kalau berhasil dituduh lewat vote!",
+          },
+          {
+            name: "Cara Menang",
+            value:
+              "**Innocent & Sheriff** menang jika impostor berhasil dituduh\n" +
+              "**Joker** menang sendiri jika dia yang dituduh\n" +
+              "**Impostor** menang jika salah dituduh, atau hasil vote seri",
+          }
+        ),
+  },
+  kredit: {
+    label: "💰 Sistem Kredit",
+    description: "Cara dapat kredit & command wallet/xp/leaderboard",
+    embed: () =>
+      new EmbedBuilder()
+        .setTitle("💰 Sistem Kredit")
+        .setColor(COLOR_LOBBY)
+        .setDescription(
+          "Menang game → dapat kredit, kalah tetap dapat kredit lebih kecil (lihat `/wallet` untuk jumlah pasti)\n\n" +
+          "`/wallet` — Cek saldo kredit & statistik kamu\n" +
+          "`/credit_to_xp <jumlah>` — Tukar kredit jadi XP\n" +
+          "`/leaderboard` — Lihat 10 besar kredit terbanyak"
+        ),
+  },
+  command: {
+    label: "⌨️ Command Game",
+    description: "Command penting saat game berlangsung",
+    embed: () =>
+      new EmbedBuilder()
+        .setTitle("⌨️ Command di Game")
+        .setColor(COLOR_LOBBY)
+        .setDescription(
+          "`!startgame` / `/startgame` — Mulai game (host, di private room)\n" +
+          "`!vote` / `/vote` — Buka voting (host)\n" +
+          "`!c <pesan>` — Chat rahasia sesama Impostor (lewat DM ke bot)\n" +
+          "Vote & tembak Sheriff dipilih lewat **dropdown**, bukan command manual (tidak ada `!vote @user`)"
+        ),
+  },
+};
+
+/** Dropdown untuk memilih topik panduan. Dipasang di bawah guide embed. */
+function buildGuideTopicSelectMenu() {
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId("imp_guide_select")
+      .setPlaceholder("📚 Pilih topik panduan...")
+      .addOptions(
+        Object.entries(GUIDE_TOPICS).map(([value, topic]) => ({
+          label: topic.label,
+          description: topic.description,
+          value,
+        }))
+      )
+  );
+}
+
+/** Ambil embed panduan sesuai value yang dipilih di dropdown. Return null kalau value tidak dikenal. */
+function buildGuideTopicEmbed(value) {
+  const topic = GUIDE_TOPICS[value];
+  return topic ? topic.embed() : null;
 }
 
 module.exports = {
@@ -343,4 +409,6 @@ module.exports = {
   buildSheriffResultEmbed,
   buildGameChannelGuideEmbed,
   buildGameChannelTriggerButton,
+  buildGuideTopicSelectMenu,
+  buildGuideTopicEmbed,
 };
