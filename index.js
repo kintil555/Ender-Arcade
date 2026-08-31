@@ -276,6 +276,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
+  // Guide dropdown di channel game — kirim panduan topik terpilih secara ephemeral
+  if (interaction.isStringSelectMenu() && interaction.customId === "imp_guide_select") {
+    try {
+      const { buildGuideTopicEmbed } = require("./function/impostor/embeds");
+      const embed = buildGuideTopicEmbed(interaction.values[0]);
+      if (embed) {
+        await interaction.reply({ embeds: [embed], ephemeral: true });
+      } else {
+        await interaction.reply({ content: "Topik panduan tidak ditemukan.", ephemeral: true });
+      }
+    } catch (err) {
+      console.error("[Impostor] Guide select error:", err);
+    }
+    return;
+  }
+
   // Cafe coffee-order select menu
   if (interaction.isStringSelectMenu() && interaction.customId === "cafe_order_select") {
     try {
