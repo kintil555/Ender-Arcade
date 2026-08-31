@@ -1,5 +1,5 @@
 const { ChannelType } = require("discord.js");
-const { buildGameChannelGuideEmbed, buildGameChannelTriggerButton } = require("../../function/impostor/embeds");
+const { buildGameChannelGuideEmbed, buildGameChannelTriggerButton, buildGuideTopicSelectMenu } = require("../../function/impostor/embeds");
 const { guildConfigManager } = require("../../function/impostor/guildConfig");
 const { MIN_PLAYERS, MAX_PLAYERS } = require("../../function/impostor/lobbyHandler");
 const { guardAdminOrOwner } = require("../../function/impostor/permissions");
@@ -32,7 +32,10 @@ module.exports = {
 
     let guideMsg;
     try {
-      guideMsg = await targetChannel.send({ embeds: [buildGameChannelGuideEmbed(MIN_PLAYERS, MAX_PLAYERS)] });
+      guideMsg = await targetChannel.send({
+        embeds: [buildGameChannelGuideEmbed(MIN_PLAYERS, MAX_PLAYERS)],
+        components: [buildGuideTopicSelectMenu()],
+      });
       await targetChannel.send({
         content: "Tekan tombol di bawah untuk membuka lobby baru:",
         components: [buildGameChannelTriggerButton()],
