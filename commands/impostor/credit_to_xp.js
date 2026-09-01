@@ -1,13 +1,14 @@
 const { EmbedBuilder } = require("discord.js");
-const { convertCreditsToXP, getOrCreateWallet, XP_PER_CREDIT } = require("../../function/impostor/economy");
+const { convertCreditsToXP, addCredits, getOrCreateWallet, XP_PER_CREDIT } = require("../../function/impostor/economy");
+const add_xp = require("../../function/impostor/add_xp");
 
-// NOTE: Standalone build — Neo Dragon's level_tb/add_xp role system is not
-// wired in here since it's Neo-Dragon-specific. This command just deducts
-// credits and reports the XP-equivalent value; hook up add_xp() again once
-// this file is copied back into the Neo Dragon project.
+// Wired to Neo Dragon Sentinel's level_tb via the shared MySQL connection
+// (see models/imp_level_tb.js + function/impostor/add_xp.js). XP given
+// here is applied for real and shows up in Neo Dragon's /level, /rank,
+// and leaderboard immediately — this is no longer a simulated conversion.
 module.exports = {
     name: "credit_to_xp",
-    description: "Tukar kredit impostor menjadi XP (standalone: hanya deduksi kredit)",
+    description: "Tukar kredit impostor menjadi XP",
     options: [
         {
             name: "amount",
@@ -47,17 +48,37 @@ module.exports = {
                 return;
             }
 
+            // Apply the XP for real to Neo Dragon's level_tb. If this fails
+            // (e.g. MySQL down), refund the credits already deducted above
+            // so the user never loses credits without receiving XP.
+            const xpResult = await add_xp(interaction.member ?? interaction.user, result.xpGained, interaction.client);
+            if (!xpResult) {
+                addCredits(userId, result.creditsSpent);
+                await interaction.editReply({
+                    content: "Gagal menerapkan XP ke sistem level (koneksi database bermasalah). Kredit kamu sudah dikembalikan — coba lagi nanti.",
+                });
+                return;
+            }
+
             const newBalance = Number(result.newBalance);
 
             const embed = new EmbedBuilder()
-                .setTitle("✅ Konversi Kredit Berhasil (standalone mode)")
+                .setTitle("✅ Konversi Kredit Berhasil")
                 .setColor(0x57f287)
                 .addFields(
                     { name: "💳 Kredit Dipakai", value: `**${result.creditsSpent.toLocaleString()}**`, inline: true },
-                    { name: "⭐ XP Setara", value: `**+${result.xpGained.toLocaleString()}**`, inline: true },
+                    { name: "⭐ XP Didapat", value: `**+${result.xpGained.toLocaleString()}**`, inline: true },
                     { name: "💰 Sisa Kredit", value: `**${newBalance.toLocaleString()}**`, inline: true },
-                )
-                .setFooter({ text: `Rate: 1 kredit = ${XP_PER_CREDIT} XP | XP belum di-apply ke level system (Neo Dragon only)` });
+                );
+
+            if (xpResult.leveledUp) {
+                embed.addFields({
+                    name: "🎉 Level Up!",
+                    value: `Level ${xpResult.previousLevel} → **${xpResult.user_level_data.level}**`,
+                });
+            }
+
+            embed.setFooter({ text: `Rate: 1 kredit = ${XP_PER_CREDIT} XP` });
 
             await interaction.editReply({ embeds: [embed] });
         } catch (err) {
