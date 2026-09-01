@@ -11,6 +11,8 @@ const { isDummyId } = require("./function/impostor/dummyPlayer");
 const { guildConfigManager } = require("./function/impostor/guildConfig");
 const { giveWarn } = require("./function/impostor/moderation");
 const { handleCafeMessage, handleCafeOrderSelect } = require("./function/cafe/cafeHandler");
+const { handleLobbyButton: handleStoryLobbyButton } = require("./function/storygame/lobbyHandler");
+const { handleSubmitTurnButton, handleTurnModalSubmit } = require("./function/storygame/gameHandler");
 
 console.log('[BOT] Starting standalone impostor bot...');
 env.validate();
@@ -259,6 +261,36 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await handleLobbyButton(interaction);
     } catch (err) {
       console.error("[Impostor] Lobby button error:", err);
+    }
+    return;
+  }
+
+  // Sambung Kata lobby buttons (story_lobby_*)
+  if (interaction.isButton() && interaction.customId.startsWith("story_lobby_")) {
+    try {
+      await handleStoryLobbyButton(interaction);
+    } catch (err) {
+      console.error("[StoryGame] Lobby button error:", err);
+    }
+    return;
+  }
+
+  // Sambung Kata "Isi Giliran" button — opens the fill-in-turn modal
+  if (interaction.isButton() && interaction.customId === "story_submit_turn") {
+    try {
+      await handleSubmitTurnButton(interaction);
+    } catch (err) {
+      console.error("[StoryGame] Submit-turn button error:", err);
+    }
+    return;
+  }
+
+  // Sambung Kata turn modal submission
+  if (interaction.isModalSubmit() && interaction.customId.startsWith("story_modal_")) {
+    try {
+      await handleTurnModalSubmit(interaction);
+    } catch (err) {
+      console.error("[StoryGame] Turn modal submit error:", err);
     }
     return;
   }
