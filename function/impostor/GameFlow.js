@@ -2,7 +2,7 @@ const { ComponentType } = require("discord.js");
 const { GameState } = require("./GameSession");
 const { assignRoles } = require("./RoleManager");
 const { generateThemePair } = require("./ThemeGenerator");
-const { resolveVoteWinners, isVotingComplete } = require("./VotingManager");
+const { tallyVotes, resolveVoteWinners, isVotingComplete } = require("./VotingManager");
 const { gameManager } = require("./GameManager");
 const {
   buildRoleDM,
@@ -139,7 +139,11 @@ async function runGame(client, guild, session, gameChannel) {
 
     const wasImpostor = session.impostorIds.includes(eliminatedId);
     const wasJoker = session.isJoker(eliminatedId);
-    const voteTally = new Map([[eliminatedId, session.votes.size]]);
+    // Real per-candidate tally (playerId -> vote count), not the total
+    // number of voters. Previously this used `session.votes.size` (total
+    // voters) as the count for `eliminatedId` alone, which showed the wrong
+    // number whenever votes were split across multiple targets.
+    const voteTally = tallyVotes(session.votes);
 
     let finalOutcome;
 
