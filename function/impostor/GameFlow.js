@@ -21,6 +21,7 @@ const {
 const { destroyGameRoom } = require("./gameRoom");
 const { saveSession } = require("./sessionPersistence");
 const { distributeGameRewards, CREDIT_WIN, CREDIT_LOSE } = require("./economy");
+const { maybeDropSecretCode } = require("./secretCode");
 const { isDummyId, mentionOrLabel, dummyLabel } = require("./dummyPlayer");
 const { generateResultCard } = require("./resultCardGenerator");
 const env = require("../../config/env");
@@ -179,6 +180,22 @@ async function runGame(client, guild, session, gameChannel) {
       rewards = await distributeGameRewards(session, finalOutcome.winner);
     } catch (err) {
       console.error("[Impostor] Failed to distribute rewards:", err);
+    }
+
+    // Secret code event: peluang acak mengirim base64 berisi salah satu
+    // dari 3 kode rahasia (dari .env). Sekali kode diklaim via /redeem,
+    // kode itu hangus selamanya — lihat function/impostor/secretCode.js
+    try {
+      const drop = maybeDropSecretCode();
+      if (drop) {
+        await gameChannel.send(
+          "🔐 **Sinyal misterius terdeteksi...**\n" +
+          "```\n" + drop.base64 + "\n```\n" +
+          "-# Decode base64 di atas, lalu klaim dengan `/redeem` kalau kamu cukup jeli."
+        ).catch(() => {});
+      }
+    } catch (err) {
+      console.error("[Impostor] Failed to process secret code drop:", err);
     }
 
     try {
