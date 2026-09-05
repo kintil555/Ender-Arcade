@@ -21,6 +21,18 @@ module.exports = {
     // Channel ID where /tos boleh dipakai. Leave empty = bisa dipakai di channel manapun.
     TOS_CHANNEL_ID: process.env.TOS_CHANNEL_ID || null,
 
+    // ---- Secret redeem code event ----
+    // 3 kode rahasia (dipisah koma), tiap kode cuma bisa diklaim SEKALI lalu hangus.
+    // Contoh .env: SECRET_CODES=LORDENDO-D3HC-RYGJ-8WN6-7T7Y-DPEE-DE4M,LORDENDO-XXXX...,LORDENDO-YYYY...
+    SECRET_CODES: (process.env.SECRET_CODES || "")
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean),
+    // Kredit yang didapat saat berhasil redeem kode.
+    SECRET_CODE_REWARD: Number(process.env.SECRET_CODE_REWARD) || 500,
+    // Peluang (0-1) bot mengirim base64 kode setelah game selesai.
+    SECRET_CODE_DROP_CHANCE: Number(process.env.SECRET_CODE_DROP_CHANCE) || 0.75,
+
     DB_HOST: process.env.DB_SERVER || process.env.DB_HOST || "localhost",
     DB_USER: process.env.DB_USER || "root",
     DB_NAME: process.env.DB_NAME,
