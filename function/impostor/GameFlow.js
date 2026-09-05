@@ -125,48 +125,85 @@ async function runGame(client, guild, session, gameChannel) {
       "🗣️ Sesi diskusi dimulai. Diskusikan objek kalian masing-masing!\n" +
       "Host dapat memulai voting kapan saja dengan `!vote` atau `/vote`."
     );
-    await waitForVoteTrigger(session, gameChannel);
 
-    // 4. Voting (single, final round — ties trigger a revote automatically).
-    // If a living Sheriff chooses to shoot instead of voting, the vote still
-    // happens for everyone else, but the FINAL outcome is decided by the
-    // Sheriff's shot (see below) rather than by the vote result directly —
-    // unless the vote eliminates the Joker, which always wins outright.
-    const voteOutcome = await runVotingLoop(session, gameChannel);
-    if (!voteOutcome) return;
-
-    const { eliminatedId, sheriffChoseShoot } = voteOutcome;
-    session.eliminatedIds.add(eliminatedId);
-
-    const wasImpostor = session.impostorIds.includes(eliminatedId);
-    const wasJoker = session.isJoker(eliminatedId);
-    // Real per-candidate tally (playerId -> vote count), not the total
-    // number of voters. Previously this used `session.votes.size` (total
-    // voters) as the count for `eliminatedId` alone, which showed the wrong
-    // number whenever votes were split across multiple targets.
-    const voteTally = tallyVotes(session.votes);
+    // Instant Win Token (see function/impostor/instawin.js) can short-circuit
+    // the game at any point from here through the voting phase — raced
+    // against the normal discussion-trigger wait so /use-instawin can fire
+    // during discussion without waiting for voting to even start.
+    let forceWin = await Promise.race([
+      waitForVoteTrigger(session, gameChannel).then(() => null),
+      waitForForceWin(session),
+    ]);
 
     let finalOutcome;
+    let eliminatedId = null;
+    let wasImpostor = false;
+    let wasJoker = false;
+    let voteTally = new Map();
 
-    if (wasJoker) {
-      // Joker wins outright the moment they're voted out — no Sheriff
-      // shooting phase happens at all, regardless of the Sheriff's choice.
-      finalOutcome = { winner: "JOKER", reason: `${mentionOrLabel(eliminatedId)} adalah Joker dan berhasil membuat semua orang memvote dirinya!` };
-    } else if (sheriffChoseShoot && session.isSheriffAlive()) {
-      // Sheriff opted to shoot instead of voting: the vote's own target does
-      // NOT decide the game — the Sheriff's shot does, per the game rules
-      // ("Sheriff magang" — pick wrong and the vote's impostor-catch doesn't
-      // save them; pick right and it doesn't matter that the vote missed).
-      // Note: the Sheriff shot result is still announced separately (see
-      // runSheriffShootingPhase → buildSheriffResultEmbed) since it's its
-      // own distinct beat in the flow, not part of the final results card.
-      finalOutcome = await runSheriffShootingPhase(session, gameChannel);
+    if (forceWin) {
+      finalOutcome = {
+        winner: forceWin.winner,
+        reason: `🏆 Instant Win Token digunakan oleh <@${forceWin.byUserId}> — tim ${forceWin.winner} langsung dinyatakan menang!`,
+      };
     } else {
-      // Normal resolution: the vote result decides the winner directly.
-      finalOutcome = wasImpostor
-        ? { winner: "INNOCENT", reason: "Impostor berhasil ditemukan dan dieliminasi!" }
-        : { winner: "IMPOSTOR", reason: "Pemain yang divote bukan impostor — impostor menang!" };
+      // 4. Voting (single, final round — ties trigger a revote automatically).
+      // If a living Sheriff chooses to shoot instead of voting, the vote still
+      // happens for everyone else, but the FINAL outcome is decided by the
+      // Sheriff's shot (see below) rather than by the vote result directly —
+      // unless the vote eliminates the Joker, which always wins outright.
+      const votingResult = await Promise.race([
+        runVotingLoop(session, gameChannel).then((r) => ({ type: "vote", value: r })),
+        waitForForceWin(session).then((r) => ({ type: "forceWin", value: r })),
+      ]);
+
+      if (votingResult.type === "forceWin") {
+        forceWin = votingResult.value;
+        finalOutcome = {
+          winner: forceWin.winner,
+          reason: `🏆 Instant Win Token digunakan oleh <@${forceWin.byUserId}> — tim ${forceWin.winner} langsung dinyatakan menang!`,
+        };
+      } else {
+        const voteOutcome = votingResult.value;
+        if (!voteOutcome) return;
+
+        ({ eliminatedId } = voteOutcome);
+        const { sheriffChoseShoot } = voteOutcome;
+        session.eliminatedIds.add(eliminatedId);
+
+        wasImpostor = session.impostorIds.includes(eliminatedId);
+        wasJoker = session.isJoker(eliminatedId);
+        // Real per-candidate tally (playerId -> vote count), not the total
+        // number of voters. Previously this used `session.votes.size` (total
+        // voters) as the count for `eliminatedId` alone, which showed the wrong
+        // number whenever votes were split across multiple targets.
+        voteTally = tallyVotes(session.votes);
+
+        if (wasJoker) {
+          // Joker wins outright the moment they're voted out — no Sheriff
+          // shooting phase happens at all, regardless of the Sheriff's choice.
+          finalOutcome = { winner: "JOKER", reason: `${mentionOrLabel(eliminatedId)} adalah Joker dan berhasil membuat semua orang memvote dirinya!` };
+        } else if (sheriffChoseShoot && session.isSheriffAlive()) {
+          // Sheriff opted to shoot instead of voting: the vote's own target does
+          // NOT decide the game — the Sheriff's shot does, per the game rules
+          // ("Sheriff magang" — pick wrong and the vote's impostor-catch doesn't
+          // save them; pick right and it doesn't matter that the vote missed).
+          // Note: the Sheriff shot result is still announced separately (see
+          // runSheriffShootingPhase → buildSheriffResultEmbed) since it's its
+          // own distinct beat in the flow, not part of the final results card.
+          finalOutcome = await runSheriffShootingPhase(session, gameChannel);
+        } else {
+          // Normal resolution: the vote result decides the winner directly.
+          finalOutcome = wasImpostor
+            ? { winner: "INNOCENT", reason: "Impostor berhasil ditemukan dan dieliminasi!" }
+            : { winner: "IMPOSTOR", reason: "Pemain yang divote bukan impostor — impostor menang!" };
+        }
+      }
     }
+
+    // Force-win path is done racing — make sure no stale resolver lingers
+    // for the remainder of the game (result screens, cleanup, etc).
+    session._resolveForceWin = null;
 
     // 5. Finish
     session.state = GameState.GAME_FINISHED;
@@ -248,6 +285,20 @@ async function runGame(client, guild, session, gameChannel) {
 function waitForVoteTrigger(session, channel) {
   return new Promise((resolve) => {
     session._resolveVoteTrigger = resolve;
+  });
+}
+
+/**
+ * Waits for an Instant Win Token to be used via /use-instawin (which calls
+ * session.triggerForceWin() — see index.js). Raced against the normal
+ * discussion/voting waits in runGame so the game can be short-circuited to
+ * a win at any point without touching the vote-driven logic itself.
+ * Resolves with { winner, byUserId } once triggered; never resolves on
+ * its own otherwise (Promise.race just lets the other branch win).
+ */
+function waitForForceWin(session) {
+  return new Promise((resolve) => {
+    session._resolveForceWin = resolve;
   });
 }
 

@@ -57,6 +57,26 @@ class GameSession {
     // Resolver for the pending "waitForVoteTrigger" promise in GameFlow.js,
     // set while the game is in the DISCUSSION state. triggerVote() calls it.
     this._resolveVoteTrigger = null;
+
+    // Resolver for an Instant Win Token being used mid-game (any state
+    // from DISCUSSION through VOTING). Set by GameFlow's race-based wait;
+    // triggerForceWin() calls it. Kept fully separate from the normal
+    // vote-driven win path in GameFlow.js — see function/impostor/instawin.js.
+    this._resolveForceWin = null;
+  }
+
+  /**
+   * Called by /use-instawin (via index.js) to short-circuit the current
+   * game straight to a win for `winnerRole`'s team ("IMPOSTOR" or
+   * "INNOCENT"). No-op (returns false) if the game isn't in a state where
+   * a force-win can apply, or none is currently awaited.
+   */
+  triggerForceWin(winnerRole, byUserId) {
+    if (!this._resolveForceWin) return false;
+    const resolve = this._resolveForceWin;
+    this._resolveForceWin = null;
+    resolve({ winner: winnerRole, byUserId });
+    return true;
   }
 
   /**

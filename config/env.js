@@ -48,6 +48,18 @@ module.exports = {
     // Peluang (0-1) bot mengirim base64 kode setelah game selesai.
     SECRET_CODE_DROP_CHANCE: Number(process.env.SECRET_CODE_DROP_CHANCE) || 0.75,
 
+    // ---- Instant Win token (TERPISAH TOTAL dari SECRET_CODES/kredit) ----
+    // Kode-kode ini TIDAK PERNAH di-drop otomatis oleh bot — owner
+    // membagikannya sendiri secara manual ke siapa pun yang dipilih.
+    // Redeem via /redeem-instawin memberi 1 token, dipakai lewat
+    // /use-instawin saat sedang di dalam game untuk langsung memenangkan
+    // tim si pemain. 1 token = 1x pakai seumur hidup per user.
+    // Contoh .env: INSTAWIN_CODES=LORDENDO-INSTAWIN-AAAA,LORDENDO-INSTAWIN-BBBB
+    INSTAWIN_CODES: (process.env.INSTAWIN_CODES || "")
+        .split(",")
+        .map((c) => c.trim().toUpperCase())
+        .filter(Boolean),
+
     DB_HOST: process.env.DB_SERVER || process.env.DB_HOST || "localhost",
     DB_USER: process.env.DB_USER || "root",
     DB_NAME: process.env.DB_NAME,
