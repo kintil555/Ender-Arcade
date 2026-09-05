@@ -22,13 +22,28 @@ module.exports = {
     TOS_CHANNEL_ID: process.env.TOS_CHANNEL_ID || null,
 
     // ---- Secret redeem code event ----
-    // 3 kode rahasia (dipisah koma), tiap kode cuma bisa diklaim SEKALI lalu hangus.
-    // Contoh .env: SECRET_CODES=LORDENDO-D3HC-RYGJ-8WN6-7T7Y-DPEE-DE4M,LORDENDO-XXXX...,LORDENDO-YYYY...
-    SECRET_CODES: (process.env.SECRET_CODES || "")
-        .split(",")
-        .map((c) => c.trim())
-        .filter(Boolean),
-    // Kredit yang didapat saat berhasil redeem kode.
+    // 3 kode rahasia, tiap kode punya rewardnya sendiri, dipisah koma.
+    // Format tiap entri: KODE:JUMLAH_KREDIT (":JUMLAH" boleh dikosongkan
+    // untuk pakai default SECRET_CODE_REWARD).
+    // Contoh .env:
+    // SECRET_CODES=LORDENDO-D3HC-RYGJ-8WN6-7T7Y-DPEE-DE4M:500,LORDENDO-XXXX:1000,LORDENDO-YYYY:250
+    SECRET_CODES: (() => {
+        const map = new Map();
+        const defaultReward = Number(process.env.SECRET_CODE_REWARD) || 500;
+        (process.env.SECRET_CODES || "")
+            .split(",")
+            .map((c) => c.trim())
+            .filter(Boolean)
+            .forEach((entry) => {
+                const [rawCode, rawReward] = entry.split(":");
+                const code = (rawCode || "").trim().toUpperCase();
+                if (!code) return;
+                const reward = Number(rawReward);
+                map.set(code, Number.isFinite(reward) && reward > 0 ? reward : defaultReward);
+            });
+        return map; // Map<string code, number reward>
+    })(),
+    // Reward default kalau sebuah kode di SECRET_CODES tidak menyertakan ":JUMLAH".
     SECRET_CODE_REWARD: Number(process.env.SECRET_CODE_REWARD) || 500,
     // Peluang (0-1) bot mengirim base64 kode setelah game selesai.
     SECRET_CODE_DROP_CHANCE: Number(process.env.SECRET_CODE_DROP_CHANCE) || 0.75,
