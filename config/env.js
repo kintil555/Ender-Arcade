@@ -17,6 +17,10 @@ module.exports = {
     // and replies with the coffee-order menu. Leave empty to disable.
     CAFE_CHANNEL_ID: process.env.CAFE_CHANNEL_ID || null,
 
+    // ---- TOS feature ----
+    // Channel ID where /tos boleh dipakai. Leave empty = bisa dipakai di channel manapun.
+    TOS_CHANNEL_ID: process.env.TOS_CHANNEL_ID || null,
+
     DB_HOST: process.env.DB_SERVER || process.env.DB_HOST || "localhost",
     DB_USER: process.env.DB_USER || "root",
     DB_NAME: process.env.DB_NAME,
