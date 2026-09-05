@@ -16,6 +16,7 @@ function saveSession(session) {
       state: session.state,
       player_ids: session.playerIds,
       created_at: session.createdAt,
+      lobby_expires_at: session._lobbyExpiresAt || null,
     };
     write(FILE, data);
   } catch (err) {
