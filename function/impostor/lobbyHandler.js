@@ -2,6 +2,7 @@ const { gameManager } = require("./GameManager");
 const { GameState } = require("./GameSession");
 const { buildLobbyEmbed, buildLobbyButtons, buildRoomCreatedEmbed } = require("./embeds");
 const { createGameRoom } = require("./gameRoom");
+const { saveSession } = require("./sessionPersistence");
 const env = require("../../config/env");
 
 const MIN_PLAYERS = env.MIN_PLAYERS;
@@ -29,40 +30,87 @@ function armLobbyTimeout(session, client, { skipRefresh = false } = {}) {
 
   session._lobbyExpiresAt = Date.now() + LOBBY_IDLE_TIMEOUT_MS;
   if (!skipRefresh) refreshLobbyCountdown(session, client);
+  saveSession(session); // persist the new deadline so a restart can't leave it stale
 
-  session._lobbyTimeout = session.registerTimer(setTimeout(async () => {
-    // Re-check state: the lobby may have started or been closed already
-    // between when this fired and now (race with closegame/startgame).
-    const current = gameManager.getSession(session.gameId);
-    if (!current || current.state !== GameState.LOBBY) return;
-
-    console.log(`[Impostor] Lobby ${session.gameId} auto-closed after ${LOBBY_IDLE_TIMEOUT_MS / 1000}s idle`);
-    try {
-      const guild = await client.guilds.fetch(session.guildId).catch(() => null);
-      const lobbyChannel = guild && session.lobbyChannelId
-        ? await guild.channels.fetch(session.lobbyChannelId).catch(() => null)
-        : null;
-      if (lobbyChannel && session.lobbyMessageId) {
-        const lobbyMsg = await lobbyChannel.messages.fetch(session.lobbyMessageId).catch(() => null);
-        if (lobbyMsg) await lobbyMsg.delete().catch(() => {});
-      }
-
-      const dmText =
-        `⏱️ Lobby "Who Is The Impostor" ditutup otomatis karena tidak ada aktivitas selama ${LOBBY_IDLE_TIMEOUT_MS / 1000} detik. ` +
-        "Gunakan `/opengame` untuk membuka lobby baru.";
-      await Promise.all(
-        session.playerIds.map((id) =>
-          client.users.fetch(id)
-            .then((user) => user.send(dmText))
-            .catch(() => {})
-        )
-      );
-    } catch (err) {
-      console.error(`[Impostor] Failed cleaning up idle lobby ${session.gameId}:`, err.message);
-    } finally {
-      gameManager.destroySession(session.gameId);
-    }
+  session._lobbyTimeout = session.registerTimer(setTimeout(() => {
+    closeIdleLobby(session.gameId, client);
   }, LOBBY_IDLE_TIMEOUT_MS));
+}
+
+/**
+ * Actually closes an idle lobby: deletes the lobby message, DMs every
+ * player, and destroys the session. Shared by two triggers:
+ *  1. The per-session setTimeout armed in armLobbyTimeout (fires almost
+ *     exactly on time — this is the normal, fast path).
+ *  2. startLobbySweeper's periodic safety-net scan (below), which catches
+ *     any lobby whose setTimeout never fired — e.g. the event loop was
+ *     blocked for a while, or a session survived a crash/restart without
+ *     its timer being re-armed. The sweeper compares against the
+ *     persisted _lobbyExpiresAt directly instead of trusting a timer.
+ * Safe to call twice for the same gameId: the state re-check below makes
+ * the second call a no-op.
+ */
+async function closeIdleLobby(gameId, client) {
+  const current = gameManager.getSession(gameId);
+  if (!current || current.state !== GameState.LOBBY) return;
+
+  console.log(`[Impostor] Lobby ${gameId} auto-closed after ${LOBBY_IDLE_TIMEOUT_MS / 1000}s idle`);
+  try {
+    const guild = await client.guilds.fetch(current.guildId).catch(() => null);
+    const lobbyChannel = guild && current.lobbyChannelId
+      ? await guild.channels.fetch(current.lobbyChannelId).catch(() => null)
+      : null;
+    if (lobbyChannel && current.lobbyMessageId) {
+      const lobbyMsg = await lobbyChannel.messages.fetch(current.lobbyMessageId).catch(() => null);
+      if (lobbyMsg) await lobbyMsg.delete().catch(() => {});
+    }
+
+    const dmText =
+      `⏱️ Lobby "Who Is The Impostor" ditutup otomatis karena tidak ada aktivitas selama ${LOBBY_IDLE_TIMEOUT_MS / 1000} detik. ` +
+      "Gunakan `/opengame` untuk membuka lobby baru.";
+    await Promise.all(
+      current.playerIds.map((id) =>
+        client.users.fetch(id)
+          .then((user) => user.send(dmText))
+          .catch(() => {})
+      )
+    );
+  } catch (err) {
+    console.error(`[Impostor] Failed cleaning up idle lobby ${gameId}:`, err.message);
+  } finally {
+    gameManager.destroySession(gameId);
+  }
+}
+
+const SWEEP_INTERVAL_MS = 30_000;
+let _sweeperHandle = null;
+
+/**
+ * Safety-net sweep: every 30s, scans all in-memory LOBBY sessions and
+ * force-closes any whose _lobbyExpiresAt has already passed. This exists
+ * because the per-session setTimeout in armLobbyTimeout can silently fail
+ * to fire (event loop starvation, a session object surviving without its
+ * timer re-armed, etc.) — when that happens the lobby message is left
+ * showing a stale/incorrect "auto-close" countdown forever instead of
+ * actually closing. The sweeper is independent of any single timer and
+ * re-derives "is this expired?" straight from the timestamp each pass,
+ * so it self-heals regardless of why the primary timer didn't fire.
+ * Call once from index.js on bot ready; safe to call multiple times
+ * (subsequent calls are no-ops) since only one interval is ever kept.
+ */
+function startLobbySweeper(client) {
+  if (_sweeperHandle) return;
+  _sweeperHandle = setInterval(() => {
+    const now = Date.now();
+    for (const session of gameManager.sessions.values()) {
+      if (session.state !== GameState.LOBBY) continue;
+      if (!session._lobbyExpiresAt) continue;
+      if (session._lobbyExpiresAt <= now) {
+        closeIdleLobby(session.gameId, client);
+      }
+    }
+  }, SWEEP_INTERVAL_MS);
+  console.log(`[Impostor] Lobby sweeper started (every ${SWEEP_INTERVAL_MS / 1000}s)`);
 }
 
 /**
@@ -202,4 +250,4 @@ async function refreshLobbyMessage(interaction, session) {
   }
 }
 
-module.exports = { handleLobbyButton, MIN_PLAYERS, MAX_PLAYERS, armLobbyTimeout };
+module.exports = { handleLobbyButton, MIN_PLAYERS, MAX_PLAYERS, armLobbyTimeout, startLobbySweeper };
