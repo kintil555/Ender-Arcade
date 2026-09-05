@@ -6,6 +6,7 @@ require('./database'); // init MySQL for warn system (imp_crime_note_tb only)
 
 const { handleLobbyButton } = require("./function/impostor/lobbyHandler");
 const { recoverSessions } = require("./function/impostor/sessionRecovery");
+const { startLobbySweeper } = require("./function/impostor/lobbyHandler");
 const { gameManager: impostorGameManager } = require("./function/impostor/GameManager");
 const { isDummyId } = require("./function/impostor/dummyPlayer");
 const { guildConfigManager } = require("./function/impostor/guildConfig");
@@ -51,6 +52,10 @@ client.once(Events.ClientReady, async () => {
   } catch (err) {
     console.error('[BOT] Session recovery error:', err.message);
   }
+
+  // Safety-net: periodically force-close any LOBBY session whose
+  // auto-close deadline has passed but whose setTimeout never fired.
+  startLobbySweeper(client);
 
   client.user.setPresence({
     activities: [{ name: 'Who Is The Impostor', type: ActivityType.Playing }],
