@@ -19,6 +19,16 @@ module.exports = {
       type: 11, // ATTACHMENT
       required: true,
     },
+    {
+      name: "uv_mode",
+      description: "Mode UV output (default: Per Face)",
+      type: 3, // STRING
+      required: false,
+      choices: [
+        { name: "Per Face (UV asli tiap face)", value: "face" },
+        { name: "Box UV (layout box standar)", value: "box" },
+      ],
+    },
   ],
   cooldown: 15000,
 
@@ -27,6 +37,7 @@ module.exports = {
 
     const attachment = interaction.options.getAttachment("file");
     const originalName = attachment.name || "model.gltf";
+    const uvMode = interaction.options.getString("uv_mode") || "face";
 
     if (!originalName.toLowerCase().endsWith(".gltf")) {
       await interaction.editReply({
@@ -74,7 +85,7 @@ module.exports = {
         throw new Error("File bukan JSON glTF yang valid (mungkin ter-corrupt atau ini file .glb biner, bukan .gltf teks).");
       }
 
-      const bbmodel = convertGltfToBbmodel(gltfJson, { name: baseName });
+      const bbmodel = convertGltfToBbmodel(gltfJson, { name: baseName, uvMode });
       await fs.promises.writeFile(outputPath, JSON.stringify(bbmodel));
 
       const fileBuffer = await fs.promises.readFile(outputPath);
@@ -86,6 +97,7 @@ module.exports = {
         .addFields(
           { name: "Cube", value: `${bbmodel.elements.length}`, inline: true },
           { name: "Resolusi texture", value: `${bbmodel.resolution.width}x${bbmodel.resolution.height}`, inline: true },
+          { name: "Mode UV", value: uvMode === "box" ? "Box UV" : "Per Face", inline: true },
         )
         .setFooter({ text: "File sementara di server sudah dihapus otomatis" });
 
