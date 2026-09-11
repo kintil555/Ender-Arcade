@@ -204,13 +204,31 @@ function readCubeMesh(reader, gltf, meshIndex) {
       ? reader.readAccessor(prim.attributes.TEXCOORD_0)
       : null;
 
-  if (positions.length % 4 !== 0 || !normals) {
+  if (!normals) {
     throw new Error(
-      `gltf2bbmodel: mesh #${meshIndex} bukan geometri cube Blockbench yang dikenali (vertex=${positions.length}). Pastikan file berasal dari Blockbench glTF export dengan cube-cube standar (bukan mesh custom/decimated).`
+      `gltf2bbmodel: mesh #${meshIndex} tidak punya NORMAL, tidak bisa dikenali sebagai cube Blockbench.`
     );
   }
 
-  const faceCount = positions.length / 4;
+  // PENTING: mesh Blockbench glTF export SELALU pakai "indices" untuk
+  // membentuk triangle list — vertex array TIDAK bisa dibaca linear
+  // per-4 seperti asumsi lama. Tiap face nyata = 2 triangle = 6 index,
+  // dan vertex mana yang dipakai (indeks berapa) ditentukan indices,
+  // bukan posisi array. Salah asumsi ini adalah ROOT CAUSE bug UV
+  // "pindah tempat per-face": kode lama pernah membaca vertex yang
+  // sama sekali tidak dipakai oleh face tsb.
+  let indices;
+  if (prim.indices !== undefined) {
+    indices = reader.readAccessor(prim.indices).map((r) => r[0]);
+  } else {
+    indices = positions.map((_, i) => i); // non-indexed: identitas
+  }
+
+  if (indices.length % 6 !== 0) {
+    throw new Error(
+      `gltf2bbmodel: mesh #${meshIndex} jumlah index (${indices.length}) bukan kelipatan 6 (2 tri/face), bukan geometri cube Blockbench standar.`
+    );
+  }
 
   let min = [Infinity, Infinity, Infinity];
   let max = [-Infinity, -Infinity, -Infinity];
@@ -222,24 +240,41 @@ function readCubeMesh(reader, gltf, meshIndex) {
   }
 
   const facesByName = {};
+  const faceCount = indices.length / 6;
   for (let f = 0; f < faceCount; f++) {
-    const vStart = f * 4;
-    const faceNormal = normals[vStart];
+    // 2 triangle per face: [a,b,c, c,b,d] (Blockbench quad export standar)
+    // -> 4 vertex unik dipakai: a, b, c, d (dari triangle pertama + 1 vertex
+    // triangle kedua yang belum dipakai).
+    const i0 = indices[f * 6 + 0];
+    const i1 = indices[f * 6 + 1];
+    const i2 = indices[f * 6 + 2];
+    const i3 = indices[f * 6 + 3];
+    const i4 = indices[f * 6 + 4];
+    const i5 = indices[f * 6 + 5];
+    const quadIdx = [...new Set([i0, i1, i2, i3, i4, i5])];
+
+    const faceNormal = normals[i0];
     const faceName = closestFace(faceNormal);
 
-    // Ambil UV langsung dari vertex pertama & vertex diagonal (index 2)
-    // alih-alih bbox min/max polos: bbox menghilangkan arah asli UV,
-    // jadi kalau UV di-flip/rotate di Blockbench, hasilnya salah arah
-    // (root cause bug "UV pindah tempat per-face").
     let uvBox = null;
-    if (uvs) {
-      const [u0, v0] = uvs[vStart + 0];
-      const [u2, v2] = uvs[vStart + 2];
-      uvBox = { uMin: u0, vMin: v0, uMax: u2, vMax: v2 };
+    if (uvs && quadIdx.length >= 3) {
+      // Ambil bbox UV dari vertex unik quad ini (bukan asumsi index tetap
+      // 0..3 linear) supaya benar-benar UV milik face ini, apa pun urutan
+      // vertex di buffer.
+      let uMin = Infinity,
+        uMax = -Infinity,
+        vMin = Infinity,
+        vMax = -Infinity;
+      for (const vi of quadIdx) {
+        const [u, v] = uvs[vi];
+        if (u < uMin) uMin = u;
+        if (u > uMax) uMax = u;
+        if (v < vMin) vMin = v;
+        if (v > vMax) vMax = v;
+      }
+      uvBox = { uMin, uMax, vMin, vMax };
     }
 
-    // Kalau exporter menulis 2 face glTF untuk 1 face Blockbench (jarang,
-    // biasanya double-sided sudah dihandle material), simpan yang pertama.
     if (!facesByName[faceName]) {
       facesByName[faceName] = uvBox;
     }
