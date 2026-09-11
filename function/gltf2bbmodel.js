@@ -227,20 +227,15 @@ function readCubeMesh(reader, gltf, meshIndex) {
     const faceNormal = normals[vStart];
     const faceName = closestFace(faceNormal);
 
+    // Ambil UV langsung dari vertex pertama & vertex diagonal (index 2)
+    // alih-alih bbox min/max polos: bbox menghilangkan arah asli UV,
+    // jadi kalau UV di-flip/rotate di Blockbench, hasilnya salah arah
+    // (root cause bug "UV pindah tempat per-face").
     let uvBox = null;
     if (uvs) {
-      let uMin = Infinity,
-        uMax = -Infinity,
-        vMin = Infinity,
-        vMax = -Infinity;
-      for (let k = 0; k < 4; k++) {
-        const [u, v] = uvs[vStart + k];
-        if (u < uMin) uMin = u;
-        if (u > uMax) uMax = u;
-        if (v < vMin) vMin = v;
-        if (v > vMax) vMax = v;
-      }
-      uvBox = { uMin, uMax, vMin, vMax };
+      const [u0, v0] = uvs[vStart + 0];
+      const [u2, v2] = uvs[vStart + 2];
+      uvBox = { uMin: u0, vMin: v0, uMax: u2, vMax: v2 };
     }
 
     // Kalau exporter menulis 2 face glTF untuk 1 face Blockbench (jarang,
@@ -402,7 +397,8 @@ function toUuid(seedCounter) {
 
 function faceUvToPixels(uvBox, texW, texH) {
   // glTF UV: origin top-left, sama seperti Blockbench UV pixel-space,
-  // jadi konversi langsung u*width, v*height.
+  // jadi konversi langsung u*width, v*height. Tidak di-clamp ke
+  // min<max supaya flip/rotate UV asli tetap terjaga.
   return [
     round4(uvBox.uMin * texW),
     round4(uvBox.vMin * texH),
@@ -411,11 +407,46 @@ function faceUvToPixels(uvBox, texW, texH) {
   ];
 }
 
-function buildElementsJson(elements, texW, texH) {
+// Standar Blockbench box_uv layout (skinning-style), relatif ke UV origin
+// [ux, uy] dan ukuran cube [w, h, d] dalam unit Blockbench.
+function boxUvFaces(ux, uy, w, h, d) {
+  const r4 = round4;
+  return {
+    up: [r4(ux + d), r4(uy), r4(ux + d + w), r4(uy + d)],
+    down: [r4(ux + d + w), r4(uy), r4(ux + d + w + w), r4(uy + d)],
+    north: [r4(ux + d + w), r4(uy + d), r4(ux + d + w + w), r4(uy + d + h)],
+    east: [r4(ux), r4(uy + d), r4(ux + d), r4(uy + d + h)],
+    south: [r4(ux + d + w + d), r4(uy + d), r4(ux + d + w + d + w), r4(uy + d + h)],
+    west: [r4(ux + d + w + d + w), r4(uy + d), r4(ux + d + w + d + w + d), r4(uy + d + h)],
+  };
+}
+
+function buildElementsJson(elements, texW, texH, uvMode) {
   const FACE_ORDER = ["north", "east", "south", "west", "up", "down"];
+  const useBoxUv = uvMode === "box";
+
   return elements.map((el) => {
     const faces = {};
+    let boxUv = null;
+    if (useBoxUv) {
+      const size = [0, 1, 2].map((i) => Math.abs(el.to[i] - el.from[i]));
+      // Origin box UV: pakai UV face "west" (kolom pertama layout box)
+      // dari data asli sbg anchor, fallback ke [0,0].
+      const anchor = el.faces.east || el.faces.up || { uMin: 0, vMin: 0 };
+      boxUv = boxUvFaces(
+        round4(anchor.uMin * texW),
+        round4(anchor.vMin * texH),
+        size[0],
+        size[1],
+        size[2]
+      );
+    }
+
     for (const faceName of FACE_ORDER) {
+      if (useBoxUv) {
+        faces[faceName] = { uv: boxUv[faceName], texture: 0 };
+        continue;
+      }
       const uvBox = el.faces[faceName];
       faces[faceName] = {
         uv: uvBox ? faceUvToPixels(uvBox, texW, texH) : [0, 0, 0, 0],
@@ -425,7 +456,7 @@ function buildElementsJson(elements, texW, texH) {
 
     return {
       name: el.name,
-      box_uv: false,
+      box_uv: useBoxUv,
       render_order: "default",
       locked: false,
       export: true,
@@ -504,6 +535,8 @@ function decodePngSize(dataUri) {
  * @param {object} gltf   Isi file .gltf yang sudah di-JSON.parse
  * @param {object} [opts]
  * @param {string} [opts.name]  Nama model (default: dari scene / "model")
+ * @param {string} [opts.uvMode] "face" (default, per-face UV asli dari
+ *   glTF) atau "box" (rekonstruksi layout box UV standar Blockbench).
  * @returns {object} bbmodel JSON
  */
 function convertGltfToBbmodel(gltf, opts = {}) {
@@ -526,8 +559,9 @@ function convertGltfToBbmodel(gltf, opts = {}) {
     throw new Error("gltf2bbmodel: tidak ada cube yang berhasil dikenali dari file ini.");
   }
 
+  const uvMode = opts.uvMode === "box" ? "box" : "face";
   const texSize = decodePngSize(gltf.images[0].uri) || { width: 16, height: 16 };
-  const elementsJson = buildElementsJson(elements, texSize.width, texSize.height);
+  const elementsJson = buildElementsJson(elements, texSize.width, texSize.height, uvMode);
   const outlinerJson = buildOutliner(outlinerRoots);
 
   const modelName = opts.name || scene.name || "model";
@@ -536,7 +570,7 @@ function convertGltfToBbmodel(gltf, opts = {}) {
     meta: {
       format_version: "4.10",
       model_format: "free",
-      box_uv: false,
+      box_uv: uvMode === "box",
     },
     name: modelName,
     model_identifier: `geometry.${modelName}`,
